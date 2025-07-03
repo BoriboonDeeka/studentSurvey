@@ -1,0 +1,59 @@
+
+/**
+ * Google Apps Script สำหรับเก็บผลจัดอันดับและคืนค่าสถิติ
+ * 1. เปิด Google Sheets
+ * 2. Extensions > Apps Script
+ * 3. ลบโค้ดเดิมแล้ววางโค้ดนี้
+ * 4. Deploy > New deployment > Web app
+ *    - Execute as: Me
+ *    - Who has access: Anyone
+ *    - Copy URL มาใส่ใน SCRIPT_URL ของไฟล์ script.js
+ */
+
+const SHEET_NAME = "Responses";
+
+function doPost(e) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
+  const body = JSON.parse(e.postData.contents);
+  const ranking = body.ranking || [];
+  const row = [new Date(), ...ranking];
+  sheet.appendRow(row);
+  return ContentService.createTextOutput("OK");
+}
+
+function doGet(e) {
+  if (e.parameter.stats === "1") {
+    return ContentService.createTextOutput(
+      JSON.stringify(getStats())
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+  return ContentService.createTextOutput("Hello");
+}
+
+function getStats() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) return {rankings: []};
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return {rankings: []}; // ไม่มีข้อมูล
+  const headers = data[0].slice(1); // จากคอลัมน์ B เป็นต้นไป
+  const stats = headers.map(h=>({item:h, sumPos:0, count:0, top1:0}));
+  for (let i=1; i<data.length; i++){
+    const row = data[i];
+    for (let j=1; j<row.length; j++){
+      const item = row[j];
+      if (!item) continue;
+      const idx = headers.indexOf(item);
+      if (idx>=0){
+        stats[idx].sumPos += j; // ตำแหน่ง (เริ่ม 1)
+        stats[idx].count++;
+        if (j===1) stats[idx].top1++;
+      }
+    }
+  }
+  stats.forEach(s=>{
+    s.avg = s.count ? s.sumPos/s.count : 0;
+  });
+  return {rankings: stats};
+}
